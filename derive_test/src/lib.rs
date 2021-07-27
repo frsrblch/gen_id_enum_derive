@@ -1,10 +1,6 @@
-use gen_id_enum_derive::many_enum_array;
+use gen_id_enum_derive::impl_array_types;
 
-// rather than derive, this should be a function-like macro inside which we define the enums
-
-// the proc_macro requires knowledge of all enums to construct a compound array enum type
-
-many_enum_array! {
+impl_array_types! {
 
     pub enum Size {
         Big,
@@ -22,4 +18,18 @@ many_enum_array! {
         pub size: Size,
     }
 
+}
+
+impl ColorSize {
+    pub const fn index1(self) -> usize {
+        self.color.index() * Size::LEN + self.size.index()
+    }
+}
+
+#[test]
+fn index_compare() {
+    use iter_context::ContextualIterator;
+    ColorSize::iter().for_each(|color_size| {
+        assert_eq!(color_size.index(), color_size.index1());
+    });
 }
