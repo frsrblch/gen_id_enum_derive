@@ -32,18 +32,18 @@ impl Input {
         self.structs.iter().find(|e| e.ident.eq(ident))
     }
 
+    pub fn get_length(&self, ident: &Ident) -> usize {
+        self.get_enum_length_inner(ident, 10)
+            .or_else(|| self.get_struct_length_inner(ident, 10))
+            .unwrap_or_else(|| panic!("Ident not found: {}", ident))
+    }
+
     pub fn get_len_const(&self, ident: &Ident) -> proc_macro2::TokenStream {
         let len = self.get_length(ident);
 
         quote! {
             pub const LEN: usize = #len;
         }
-    }
-
-    pub fn get_length(&self, ident: &Ident) -> usize {
-        self.get_enum_length_inner(ident, 10)
-            .or_else(|| self.get_struct_length_inner(ident, 10))
-            .unwrap_or_else(|| panic!("Ident not found: {}", ident))
     }
 
     fn get_enum_length_inner(&self, ident: &Ident, recursion_limit: usize) -> Option<usize> {
@@ -156,7 +156,7 @@ impl Input {
 
         quote! {
             #[cfg(test)]
-            mod tests {
+            mod array_enum_tests {
                 use super::*;
 
                 #[test]
