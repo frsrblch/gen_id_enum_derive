@@ -32,12 +32,6 @@ impl Input {
         self.structs.iter().find(|e| e.ident.eq(ident))
     }
 
-    pub fn get_length(&self, ident: &Ident) -> usize {
-        self.get_enum_length_inner(ident, 10)
-            .or_else(|| self.get_struct_length_inner(ident, 10))
-            .unwrap_or_else(|| panic!("Ident not found: {}", ident))
-    }
-
     pub fn get_len_const(&self, ident: &Ident) -> proc_macro2::TokenStream {
         let len = self.get_length(ident);
 
@@ -46,7 +40,13 @@ impl Input {
         }
     }
 
-    fn get_enum_length_inner(&self, ident: &Ident, recursion_limit: usize) -> Option<usize> {
+    pub fn get_length(&self, ident: &Ident) -> usize {
+        self.get_enum_length(ident, 10)
+            .or_else(|| self.get_struct_length(ident, 10))
+            .unwrap_or_else(|| panic!("Ident not found: {}", ident))
+    }
+
+    fn get_enum_length(&self, ident: &Ident, recursion_limit: usize) -> Option<usize> {
         if recursion_limit == 0 {
             panic!("Recursion limit reached")
         }
@@ -59,8 +59,8 @@ impl Input {
             let len = get_variant_type(variant)
                 .and_then(|ident| {
                     let recursion_limit = recursion_limit - 1;
-                    self.get_enum_length_inner(ident, recursion_limit)
-                        .or_else(|| self.get_struct_length_inner(ident, recursion_limit))
+                    self.get_enum_length(ident, recursion_limit)
+                        .or_else(|| self.get_struct_length(ident, recursion_limit))
                 })
                 .unwrap_or(1);
 
@@ -70,7 +70,7 @@ impl Input {
         Some(sum)
     }
 
-    fn get_struct_length_inner(&self, ident: &Ident, recursion_limit: usize) -> Option<usize> {
+    fn get_struct_length(&self, ident: &Ident, recursion_limit: usize) -> Option<usize> {
         if recursion_limit == 0 {
             panic!("Recursion limit reached")
         }
@@ -84,8 +84,8 @@ impl Input {
             let recursion_limit = recursion_limit - 1;
 
             let len = self
-                .get_enum_length_inner(ident, recursion_limit)
-                .or_else(|| self.get_struct_length_inner(ident, recursion_limit))
+                .get_enum_length(ident, recursion_limit)
+                .or_else(|| self.get_struct_length(ident, recursion_limit))
                 .unwrap_or(1);
 
             product *= len;
