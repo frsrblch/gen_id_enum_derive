@@ -9,6 +9,7 @@ mod input;
 #[proc_macro]
 pub fn many_enum_array(input: TokenStream) -> TokenStream {
     let input = &parse_macro_input!(input as Input);
+    let derives = &get_derives();
 
     let enum_tokens = input.enums.iter().map(|ty| {
         let impl_enum = get_impl_enum(ty, input);
@@ -16,7 +17,7 @@ pub fn many_enum_array(input: TokenStream) -> TokenStream {
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
-            #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+            #derives
             #ty
 
             #impl_enum
@@ -31,7 +32,7 @@ pub fn many_enum_array(input: TokenStream) -> TokenStream {
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
-            #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd, Hash)]
+            #derives
             #ty
 
             #impl_struct
@@ -53,15 +54,27 @@ pub fn many_enum_array(input: TokenStream) -> TokenStream {
     tokens.into()
 }
 
+fn get_derives() -> proc_macro2::TokenStream {
+    quote! {
+        #[derive(Debug, Copy, Clone, Eq, Ord, PartialEq, PartialOrd, Hash)]
+    }
+}
+
 fn get_impl_struct(item_struct: &ItemStruct, input: &Input) -> proc_macro2::TokenStream {
     let (impl_generics, ty_generics, where_clause) = item_struct.generics.split_for_impl();
     let ty = &item_struct.ident;
 
     let const_len = get_len_const(ty, input);
+    let const_array = get_array_const(ty, input);
+    let fn_index = get_struct_index_fn(item_struct, input);
 
     quote! {
         impl #impl_generics #ty #ty_generics #where_clause {
             #const_len
+
+            #const_array
+
+            #fn_index
         }
     }
 }
@@ -99,14 +112,14 @@ fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
 
             #[inline]
             fn index(&self, index: #ty) -> &Self::Output {
-                &self.values[index.index()]
+                self.values.index(index.index())
             }
         }
 
         impl<T> std::ops::IndexMut<#ty> for #array <T> {
             #[inline]
             fn index_mut(&mut self, index: #ty) -> &mut Self::Output {
-                &mut self.values[index.index()]
+                self.values.index_mut(index.index())
             }
         }
 
@@ -143,8 +156,8 @@ fn get_impl_enum(item_enum: &ItemEnum, enums: &Input) -> proc_macro2::TokenStrea
     let ty = &item_enum.ident;
 
     let const_len = get_len_const(ty, enums);
-    let const_array = get_array_const(item_enum, enums);
-    let fn_index = get_index_fn(item_enum, enums);
+    let const_array = get_array_const(ty, enums);
+    let fn_index = get_enum_index_fn(item_enum, enums);
 
     quote! {
         impl #impl_generics #ty #ty_generics #where_clause {
@@ -169,15 +182,26 @@ fn get_len_const(ident: &Ident, input: &Input) -> proc_macro2::TokenStream {
     }
 }
 
-fn get_array_const(item_enum: &ItemEnum, input: &Input) -> proc_macro2::TokenStream {
-    let array_variants = get_all_enum_variants(item_enum, input);
-
+fn get_array_const(ident: &Ident, input: &Input) -> proc_macro2::TokenStream {
+    let variants = get_all_variants(ident, input);
     quote! {
         pub const ARRAY: [Self; Self::LEN] =
         [
-            #( #array_variants, )*
+            #( #variants, )*
         ];
     }
+}
+
+fn get_all_variants(ident: &Ident, input: &Input) -> Vec<proc_macro2::TokenStream> {
+    input
+        .get_enum(ident)
+        .map(|e| get_all_enum_variants(e, input))
+        .or_else(|| {
+            input
+                .get_struct(ident)
+                .map(|s| get_all_struct_variants(s, input))
+        })
+        .unwrap_or_else(|| panic!("Ident not found: {}", ident))
 }
 
 fn get_all_enum_variants(item_enum: &ItemEnum, input: &Input) -> Vec<proc_macro2::TokenStream> {
@@ -190,17 +214,10 @@ fn get_all_enum_variants(item_enum: &ItemEnum, input: &Input) -> Vec<proc_macro2
             if let Some(ident) = get_variant_type(variant) {
                 let variant = &variant.ident;
 
-                match (input.get_enum(ident), input.get_struct(ident)) {
-                    (Some(inner_enum), None) => get_all_enum_variants(inner_enum, input)
-                        .into_iter()
-                        .map(|inner| quote! { #ty :: #variant ( #inner ) })
-                        .collect::<Vec<_>>(),
-                    (None, Some(inner_struct)) => get_all_struct_variants(inner_struct, input)
-                        .into_iter()
-                        .map(|inner| quote! { #ty :: #variant ( #inner ) })
-                        .collect::<Vec<_>>(),
-                    _ => unreachable!(),
-                }
+                get_all_variants(ident, input)
+                    .into_iter()
+                    .map(|inner| quote! { #ty :: #variant ( #inner ) })
+                    .collect()
             } else {
                 vec![quote! { #ty :: #variant }]
             }
@@ -209,10 +226,75 @@ fn get_all_enum_variants(item_enum: &ItemEnum, input: &Input) -> Vec<proc_macro2
 }
 
 fn get_all_struct_variants(
-    _item_struct: &ItemStruct,
-    _input: &Input,
+    item_struct: &ItemStruct,
+    input: &Input,
 ) -> Vec<proc_macro2::TokenStream> {
-    todo!("struct variants")
+    let ty = &item_struct.ident;
+
+    let field_variants: Vec<Vec<_>> = item_struct
+        .fields
+        .iter()
+        .map(|ty| {
+            let inner = get_field_type(ty);
+            get_all_variants(inner, input)
+        })
+        .collect();
+
+    let permutations = get_permutations(&field_variants);
+
+    match &item_struct.fields {
+        Fields::Named(fields) => permutations
+            .iter()
+            .map(|p| {
+                let fields = fields.named.iter().map(|f| &f.ident);
+                quote! { #ty { #( #fields: #p, )* } }
+            })
+            .collect(),
+        Fields::Unnamed(_) => permutations
+            .iter()
+            .map(|p| {
+                quote! { #ty ( #( #p, )* ) }
+            })
+            .collect(),
+        Fields::Unit => {
+            vec![quote! { #ty }]
+        }
+    }
+}
+
+fn get_permutations<T: Clone>(sets: &Vec<Vec<T>>) -> Vec<Vec<T>> {
+    match &sets.as_slice() {
+        &[] => vec![],
+        &[single] => single.iter().map(|ts| vec![ts.clone()]).collect(),
+        &[a, b] => a
+            .iter()
+            .flat_map(|a| b.iter().map(move |b| vec![a.clone(), b.clone()]))
+            .collect(),
+        &[a, b, c] => a
+            .iter()
+            .flat_map(move |a| {
+                b.iter()
+                    .flat_map(move |b| c.iter().map(move |c| vec![a.clone(), b.clone(), c.clone()]))
+            })
+            .collect(),
+        _ => unimplemented!("Cannot have more than three sets"),
+    }
+}
+
+#[test]
+fn permutation_test() {
+    let input: Vec<Vec<u32>> = vec![vec![1, 2], vec![2, 3, 5], vec![7]];
+    let expected: Vec<Vec<u32>> = vec![
+        vec![1, 2, 7],
+        vec![1, 3, 7],
+        vec![1, 5, 7],
+        vec![2, 2, 7],
+        vec![2, 3, 7],
+        vec![2, 5, 7],
+    ];
+    let actual = get_permutations(&input);
+
+    assert_eq!(expected, actual);
 }
 
 fn get_variant_type(variant: &Variant) -> Option<&Ident> {
@@ -220,7 +302,7 @@ fn get_variant_type(variant: &Variant) -> Option<&Ident> {
 
     match fields.as_slice() {
         &[] => None,
-        &[field] => get_field_type(field),
+        &[field] => Some(get_field_type(field)),
         _ => panic!(
             "{}: Variants can only have zero or one fields",
             variant.ident
@@ -228,14 +310,14 @@ fn get_variant_type(variant: &Variant) -> Option<&Ident> {
     }
 }
 
-fn get_field_type(field: &Field) -> Option<&Ident> {
+fn get_field_type(field: &Field) -> &Ident {
     match &field.ty {
-        Type::Path(path) => path.path.get_ident(),
+        Type::Path(path) => path.path.get_ident().expect("path does not have Ident"),
         _ => panic!("field type is not Type::Path"),
     }
 }
 
-fn get_index_fn(item_enum: &ItemEnum, input: &Input) -> proc_macro2::TokenStream {
+fn get_enum_index_fn(item_enum: &ItemEnum, input: &Input) -> proc_macro2::TokenStream {
     let is_flat = item_enum
         .variants
         .iter()
@@ -287,6 +369,22 @@ fn get_index_fn(item_enum: &ItemEnum, input: &Input) -> proc_macro2::TokenStream
                 match self {
                     #( #match_variants )*
                 }
+            }
+        }
+    }
+}
+
+fn get_struct_index_fn(item_struct: &ItemStruct, input: &Input) -> proc_macro2::TokenStream {
+    let variants: Vec<_> = get_all_variants(&item_struct.ident, input);
+
+    let variants = variants.iter().enumerate().map(|(i, variant)| {
+        quote! { #variant => #i, }
+    });
+
+    quote! {
+        pub const fn index(self) -> usize {
+            match self {
+                #( #variants )*
             }
         }
     }

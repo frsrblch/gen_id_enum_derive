@@ -69,15 +69,15 @@ impl Input {
 
         let item_struct = self.get_struct(ident)?;
 
-        let mut product = 0;
+        let mut product = 1;
 
         for field in item_struct.fields.iter() {
-            let len = get_field_type(field)
-                .and_then(|ident| {
-                    let recursion_limit = recursion_limit - 1;
-                    self.get_enum_length_inner(ident, recursion_limit)
-                        .or_else(|| self.get_struct_length_inner(ident, recursion_limit))
-                })
+            let ident = get_field_type(field);
+            let recursion_limit = recursion_limit - 1;
+
+            let len = self
+                .get_enum_length_inner(ident, recursion_limit)
+                .or_else(|| self.get_struct_length_inner(ident, recursion_limit))
                 .unwrap_or(1);
 
             product *= len;
