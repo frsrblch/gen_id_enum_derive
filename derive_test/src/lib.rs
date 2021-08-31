@@ -1,10 +1,10 @@
-use gen_id_enum_derive::many_enum_array;
+use gen_id_enum_derive::multi_enum_array;
 
 // rather than derive, this should be a function-like macro inside which we define the enums
 
 // the proc_macro requires knowledge of all enums to construct a compound array enum type
 
-many_enum_array! {
+multi_enum_array! {
 
     pub enum Size {
         Big,

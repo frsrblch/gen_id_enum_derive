@@ -7,7 +7,7 @@ use syn::{parse_macro_input, Field, Fields, Ident, Item, ItemEnum, ItemStruct, T
 mod input;
 
 #[proc_macro]
-pub fn many_enum_array(input: TokenStream) -> TokenStream {
+pub fn multi_enum_array(input: TokenStream) -> TokenStream {
     let input = &parse_macro_input!(input as Input);
     let derives = &get_derives();
 
