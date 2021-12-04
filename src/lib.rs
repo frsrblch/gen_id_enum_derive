@@ -57,7 +57,7 @@ fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
     let array = &Ident::new(&format!("{}Array", ident), ident.span());
 
     quote! {
-        #[derive(Debug, Default, Copy, Clone)]
+        #[derive(Debug, Default, Copy, Clone, Eq, PartialEq)]
         pub struct #array <T> {
             values: [T; #ty::LEN],
         }
