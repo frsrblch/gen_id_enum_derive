@@ -62,6 +62,12 @@ fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
             values: [T; #ty::LEN],
         }
 
+        impl<T> From<[T; #ty::LEN]> for #array <T> {
+            fn from(array: [T; #ty::LEN]) -> Self {
+                Self::new(array)
+            }
+        }
+
         impl<T> #array <T> {
             #[inline]
             pub const fn new(values: [T; <#ty>::LEN]) -> Self {
