@@ -9,7 +9,6 @@ mod input;
 #[proc_macro]
 pub fn multi_enum_array(input: TokenStream) -> TokenStream {
     let input = &parse_macro_input!(input as Input);
-    let derives = &get_derives();
 
     let enum_tokens = input.enums.iter().map(|ty| {
         let impl_enum = input.get_impl_enum(ty);
@@ -17,7 +16,6 @@ pub fn multi_enum_array(input: TokenStream) -> TokenStream {
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
-            #derives
             #ty
 
             #impl_enum
@@ -32,7 +30,6 @@ pub fn multi_enum_array(input: TokenStream) -> TokenStream {
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
-            #derives
             #ty
 
             #impl_struct
@@ -52,12 +49,6 @@ pub fn multi_enum_array(input: TokenStream) -> TokenStream {
     };
 
     tokens.into()
-}
-
-fn get_derives() -> proc_macro2::TokenStream {
-    quote! {
-        #[derive(Debug, Copy, Clone, Eq, Ord, PartialEq, PartialOrd, Hash)]
-    }
 }
 
 fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
