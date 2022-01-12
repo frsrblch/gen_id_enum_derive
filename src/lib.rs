@@ -12,7 +12,6 @@ pub fn multi_enum_array(input: TokenStream) -> TokenStream {
 
     let enum_tokens = input.enums.iter().map(|ty| {
         let impl_enum = input.get_impl_enum(ty);
-
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
@@ -26,7 +25,6 @@ pub fn multi_enum_array(input: TokenStream) -> TokenStream {
 
     let struct_tokens = input.structs.iter().map(|ty| {
         let impl_struct: proc_macro2::TokenStream = input.get_impl_struct(ty);
-
         let array: proc_macro2::TokenStream = get_array_struct(&ty.ident);
 
         quote! {
@@ -125,6 +123,18 @@ fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
 
         impl<'a, T> iter_context::ContextualIterator for &'a mut #array <T> {
             type Context = #ty;
+        }
+
+        impl<T> std::iter::Sum<(#ty, T)> for #array <T>
+        where
+            T: std::ops::AddAssign + Default,
+        {
+            fn sum<I: Iterator<Item=(#ty, T)>>(iter: I) -> Self {
+                iter.fold(#array::default(), |mut arr, (e, i)| {
+                    arr[e] += i;
+                    arr
+                })
+            }
         }
     }
 }
