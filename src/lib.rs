@@ -139,15 +139,15 @@ fn get_array_struct(ident: &Ident) -> proc_macro2::TokenStream {
     }
 }
 
-fn get_permutations<T: Clone>(sets: &Vec<Vec<T>>) -> Vec<Vec<T>> {
-    match &sets.as_slice() {
-        &[] => vec![],
-        &[single] => single.iter().map(|ts| vec![ts.clone()]).collect(),
-        &[a, b] => a
+fn get_permutations<T: Clone>(sets: &[Vec<T>]) -> Vec<Vec<T>> {
+    match sets {
+        [] => vec![],
+        [single] => single.iter().map(|ts| vec![ts.clone()]).collect(),
+        [a, b] => a
             .iter()
             .flat_map(|a| b.iter().map(move |b| vec![a.clone(), b.clone()]))
             .collect(),
-        &[a, b, c] => a
+        [a, b, c] => a
             .iter()
             .flat_map(move |a| {
                 b.iter()
@@ -177,9 +177,9 @@ fn permutation_test() {
 fn get_variant_type(variant: &Variant) -> Option<&Ident> {
     let fields = variant.fields.iter().take(2).collect::<Vec<_>>();
 
-    match fields.as_slice() {
-        &[] => None,
-        &[field] => Some(get_field_type(field)),
+    match *fields.as_slice() {
+        [] => None,
+        [field] => Some(get_field_type(field)),
         _ => panic!(
             "{}: Variants can only have zero or one fields",
             variant.ident
